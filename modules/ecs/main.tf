@@ -1,5 +1,5 @@
 resource "aws_ecr_repository" "jdn_repo"{
-    name = "..."
+    name = "jdn-ecs-app"
     image_tag_mutability = "IMMUTABLE"
 
     image_scanning_configuration {
@@ -8,7 +8,7 @@ resource "aws_ecr_repository" "jdn_repo"{
 }
 
 resource "aws_iam_role" "execution_role"{
-    name = "..."
+    name = "ecs-execution-role"
 
     assume_role_policy = jsonencode({
         Version = "2012-10-17"
@@ -22,12 +22,12 @@ resource "aws_iam_role" "execution_role"{
 
 resource "aws_iam_role_policy_attachment" "execution_role_policy"{
     role = aws_iam_role.execution_role.name
-    policy_arn = "arn:aws:iam:aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+    policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 
 resource "aws_iam_role" "task_role" {
-  name = "..."
+  name = "ecs-task-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -41,7 +41,7 @@ resource "aws_iam_role" "task_role" {
 
 
 resource "aws_ecs_task_definition" "task_test" {
-  family                   = "..."
+  family                   = "jdn-app-task"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = "256"
@@ -51,7 +51,7 @@ resource "aws_ecs_task_definition" "task_test" {
 
   container_definitions = jsonencode([
     {
-      name      = "..."
+      name      = "jdn-ecs-app"
       image     = "${aws_ecr_repository.jdn_repo.repository_url}:latest"
       essential = true
       portMappings = [
@@ -63,11 +63,20 @@ resource "aws_ecs_task_definition" "task_test" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "..."
+          "awslogs-group"         = "Project04"
           "awslogs-region"        = "us-east-1"
           "awslogs-stream-prefix" = "ecs"
         }
       }
     }
   ])
+}
+
+resource "aws_cloudwatch_log_group" "project04" {
+  name = "Project04"
+
+  tags = {
+    Name = "Project04"
+    Environment = "production"
+  }
 }
