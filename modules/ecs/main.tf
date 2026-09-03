@@ -1,3 +1,7 @@
+#----------------------------------------
+# REPOSITORY
+#----------------------------------------
+
 resource "aws_ecr_repository" "jdn_repo"{
     name = "jdn-ecs-app"
     image_tag_mutability = "IMMUTABLE"
@@ -6,6 +10,10 @@ resource "aws_ecr_repository" "jdn_repo"{
       scan_on_push = true
     }
 }
+
+#----------------------------------------
+# IAM
+#----------------------------------------
 
 resource "aws_iam_role" "execution_role"{
     name = "ecs-execution-role"
@@ -39,6 +47,9 @@ resource "aws_iam_role" "task_role" {
   })
 }
 
+#----------------------------------------
+# TASKS
+#----------------------------------------
 
 resource "aws_ecs_task_definition" "task_test" {
   family                   = "jdn-app-task"
@@ -71,6 +82,11 @@ resource "aws_ecs_task_definition" "task_test" {
     }
   ])
 }
+
+
+#----------------------------------------
+# CLOUDWATCH
+#----------------------------------------
 
 resource "aws_cloudwatch_log_group" "project04" {
   name = "Project04"
