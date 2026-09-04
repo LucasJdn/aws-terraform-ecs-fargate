@@ -1,5 +1,5 @@
 resource "aws_security_group" "SG_ALB" {
-  name        = "sg-alb"
+  name        = "jdn-alb-sg"
   description = "Security Group for ALB"
   vpc_id      = var.vpc_id
 
@@ -9,7 +9,7 @@ resource "aws_security_group" "SG_ALB" {
 }
 
 resource "aws_security_group" "SG_TASK" {
-  name        = "sg-task"
+  name        = "jdn-task-sg"
   description = "Security Group for ECS Task"
   vpc_id      = var.vpc_id
 
