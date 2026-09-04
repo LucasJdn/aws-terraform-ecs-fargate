@@ -12,9 +12,9 @@ provider "aws" {
 }
 
 module "network" {
-    source = "./modules/network"
-  
-    
+  source = "./modules/network"
+
+
 }
 
 module "security" {
@@ -24,7 +24,7 @@ module "security" {
 
 }
 
-module "ecs"{
+module "ecs" {
   source = "./modules/ecs"
 
 }
