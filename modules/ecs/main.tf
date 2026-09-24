@@ -137,3 +137,32 @@ resource "aws_ecs_cluster" "cluster" {
     Environment = "production"
   }
 }
+
+#----------------------------------------
+# SERVICE
+#----------------------------------------
+
+resource "aws_ecs_service" "service" {
+  name            = "jdn-ecs-service"
+  cluster         = aws_ecs_cluster.cluster.id
+  task_definition = aws_ecs_task_definition.task_test.arn
+  desired_count   = var.desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = var.private_subnet_ids
+    security_groups  = [var.task_security_group_id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = var.target_group_arn
+    container_name   = "jdn-ecs-app"
+    container_port   = 8080
+  }
+
+  tags = {
+    Name        = "jdn-ecs-service"
+    Environment = "production"
+  }
+}

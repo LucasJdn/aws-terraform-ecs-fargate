@@ -3,161 +3,148 @@
 [![Terraform](https://img.shields.io/badge/Terraform-1.x-blue)](https://www.terraform.io/)
 [![AWS Provider](https://img.shields.io/badge/AWS%20Provider-~%3E%206.0-orange)](https://registry.terraform.io/providers/hashicorp/aws/latest)
 
-A **Terraform on AWS** study project that provisions the infrastructure needed to run a
-**Node.js** application in a container on **ECS Fargate**, covering networking (VPC),
-security (Security Groups), an image repository (ECR), a task definition, and logs
-(CloudWatch).
-
-> ⚠️ **Current status:** the root `main.tf` only instantiates the `network` module. The
-> `security` and `ecs` modules have already been created, but are **not yet** referenced
-> in the root module. See [Current status and caveats](#current-status-and-caveats).
+A **Terraform on AWS** production-ready project that provisions the full infrastructure needed to run a **Node.js** application in a container on **AWS ECS Fargate**, fronted by an **Application Load Balancer (ALB)**, covering networking (VPC across 2 AZs), security (Security Groups), container registry (ECR with lifecycle policy), ECS Cluster, Task Definition, ECS Service, and logs (CloudWatch).
 
 ---
 
 ## 📋 Overview
 
-| Area | Resource |
-| --- | --- |
-| **Application** | Simple Node.js HTTP server that responds on port `8080` with the container hostname |
-| **Container** | `dockerfile` based on `node:24` |
-| **Network** | VPC `10.2.0.0/16` across 2 AZs, public/private subnets, Internet Gateway, and NAT Gateways |
-| **Security** | Security Groups for the ALB and the ECS task |
-| **ECS** | ECR repository, IAM roles, and a Fargate task definition (`awsvpc`, 256 CPU / 512 MB) |
-| **Logs** | CloudWatch Log Group `Project04` via the `awslogs` driver |
+| Area | Resource | Details |
+| --- | --- | --- |
+| **Application** | Node.js HTTP Server | Responds on port `8080` with the container hostname |
+| **Container** | `dockerfile` | Based on `node:24` |
+| **Network** | VPC `10.2.0.0/16` | Multi-AZ (us-east-1a, us-east-1b), 2 public subnets, 2 private subnets, Internet Gateway, 2 NAT Gateways |
+| **Load Balancer** | Application Load Balancer | Internet-facing ALB in public subnets, Target Group (`ip` mode, port `8080`, health check `/`), HTTP Listener on port `80` |
+| **Security** | Security Groups | ALB SG (HTTP 80 ingress, egress to task SG) and Task SG (ingress 8080 from ALB SG, full egress for ECR & CloudWatch) |
+| **ECS** | Fargate Service & Cluster | ECS Cluster (Container Insights), Task Definition (256 CPU / 512 MB), and ECS Service maintaining tasks in private subnets |
+| **Registry** | Amazon ECR | Repository `jdn-ecs-app` with image scanning on push, `force_delete` enabled, and lifecycle policy (keeps last 10 images) |
+| **Logs** | CloudWatch Logs | Log Group `Project04` via `awslogs` driver with 7-day retention policy |
+
+---
 
 ## 🏗️ Architecture
 
 ```mermaid
 graph TD
+    Client["Internet / Users"] -->|"HTTP :80"| ALB["Application Load Balancer<br/>(jdn-alb)"]
+
     subgraph AWS["AWS — us-east-1"]
         subgraph VPC["VPC Project-VPC (10.2.0.0/16)"]
             IGW["Internet Gateway"]
-            subgraph AZa["us-east-1a"]
-                Pub1["PublicSubnet01<br/>10.2.1.0/24"]
-                Priv1["PrivateSubnet01<br/>10.2.2.0/24"]
+
+            subgraph PublicSubnets["Public Subnets"]
+                Pub1["PublicSubnet01 (us-east-1a)<br/>10.2.1.0/24"]
+                Pub2["PublicSubnet02 (us-east-1b)<br/>10.2.3.0/24"]
                 NAT1["NAT Gateway 01"]
-            end
-            subgraph AZb["us-east-1b"]
-                Pub2["PublicSubnet02<br/>10.2.3.0/24"]
-                Priv2["PrivateSubnet02<br/>10.2.4.0/24"]
                 NAT2["NAT Gateway 02"]
+            end
+
+            subgraph PrivateSubnets["Private Subnets"]
+                Priv1["PrivateSubnet01 (us-east-1a)<br/>10.2.2.0/24"]
+                Priv2["PrivateSubnet02 (us-east-1b)<br/>10.2.4.0/24"]
+                ECS_SVC["ECS Fargate Service<br/>(jdn-ecs-service)"]
             end
         end
 
-        ALB["ALB (planned)"]
-        SG_ALB["SG ALB"]
-        SG_TASK["SG Task (8080/TCP)"]
-        ECS["ECS Fargate Task<br/>jdn-ecs-app"]
-        ECR["ECR<br/>jdn-ecs-app"]
-        CW["CloudWatch<br/>Project04"]
+        ECR["Amazon ECR<br/>(jdn-ecs-app)"]
+        CW["CloudWatch Logs<br/>(Project04)"]
 
-        ALB --> SG_ALB
-        SG_ALB -.->|"8080/TCP"| SG_TASK
-        SG_TASK --> ECS
-        ECS -->|"pull image"| ECR
-        ECS -->|"awslogs"| CW
+        ALB -->|"Target Group :8080"| ECS_SVC
+        ECS_SVC -->|"pull image (via NAT)"| ECR
+        ECS_SVC -->|"stream logs (via NAT)"| CW
         IGW --> Pub1 & Pub2
         NAT1 --> Pub1
         NAT2 --> Pub2
+        Priv1 -.-> NAT1
+        Priv2 -.-> NAT2
     end
 ```
 
-## 📁 Project structure
+---
+
+## 📁 Project Structure
 
 ```
 .
 ├── app/
 │   └── server.js                  # Node.js application (port 8080)
 ├── modules/
+│   ├── alb/
+│   │   ├── main.tf                # ALB, Target Group (ip mode), Listener
+│   │   ├── outputs.tf             # alb_id, alb_arn, alb_dns_name, target_group_arn
+│   │   └── variables.tf           # vpc_id, public_subnet_ids, alb_security_group_id
 │   ├── ecs/
-│   │   ├── main.tf                # ECR, IAM roles, task definition, CloudWatch
-│   │   ├── output.tf              # (empty)
-│   │   └── variables.tf           # (empty)
+│   │   ├── main.tf                # ECR, Lifecycle Policy, IAM roles, Task Def, Cluster, Service, CloudWatch
+│   │   ├── output.tf              # cluster_*, service_*, ecr_repository_url, task_definition_arn
+│   │   └── variables.tf           # aws_region, private_subnet_ids, task_security_group_id, target_group_arn
 │   ├── network/
-│   │   ├── main.tf                # VPC, subnets, IGW, NAT, route tables
+│   │   ├── main.tf                # VPC, subnets, IGW, NAT Gateways, route tables
 │   │   ├── outputs.tf             # vpc_id, public_subnet_ids, private_subnet_ids
-│   │   └── variables.tf           # (empty)
+│   │   └── variables.tf           # (optional overrides)
 │   └── security/
-│       ├── main.tf                # Security Groups (ALB and task)
-│       ├── output.tf              # (empty)
+│       ├── main.tf                # Security Groups & Rules (ALB and Task ingress/egress)
+│       ├── output.tf              # alb_security_group_id, task_security_group_id
 │       └── variables.tf           # vpc_id
-├── dockerfile                     # Node.js image
-├── main.tf                        # AWS provider + modules (root)
-└── .terraform.lock.hcl            # Provider lock (hashicorp/aws 6.62.0)
+├── dockerfile                     # Node.js container image
+├── main.tf                        # AWS provider + Module orchestration (root)
+├── variables.tf                   # Root variables (aws_region)
+├── outputs.tf                     # Root outputs (alb_dns_name, ecr_repository_url, vpc_id, etc.)
+└── .terraform.lock.hcl            # Provider lock file
 ```
 
-## 🧱 Provisioned resources
+---
+
+## 🧱 Provisioned Resources
 
 ### `network` module
-
-| Resource | Details |
-| --- | --- |
-| `aws_vpc` | `10.2.0.0/16` |
-| Public subnets | `10.2.1.0/24` (us-east-1a) and `10.2.3.0/24` (us-east-1b) |
-| Private subnets | `10.2.2.0/24` (us-east-1a) and `10.2.4.0/24` (us-east-1b) |
-| Internet Gateway | Public route `0.0.0.0/0` |
-| NAT Gateways | 1 per AZ (each with an Elastic IP) |
-| Route tables | 1 public (IGW) + 2 private (NAT per AZ) |
+- **VPC**: `10.2.0.0/16`
+- **Subnets**: 2 public (`10.2.1.0/24`, `10.2.3.0/24`) and 2 private (`10.2.2.0/24`, `10.2.4.0/24`) across `us-east-1a` and `us-east-1b`.
+- **Gateways**: 1 Internet Gateway + 2 NAT Gateways (each with dedicated Elastic IP).
+- **Routing**: 1 Public Route Table (IGW) and 2 Private Route Tables (NAT per AZ).
 
 ### `security` module
+- **`SG_ALB`**: Allows inbound HTTP (`80/TCP`) from `0.0.0.0/0`. Allows outbound traffic to `SG_TASK` on port `8080/TCP`.
+- **`SG_TASK`**: Allows inbound traffic from `SG_ALB` on port `8080/TCP`. Allows full outbound traffic (`-1` to `0.0.0.0/0`) for ECR pulls, CloudWatch logs, and NAT access.
 
-| Resource | Details |
-| --- | --- |
-| `SG_ALB` | ALB Security Group (**no ingress rules yet**) |
-| `SG_TASK` | ECS task Security Group |
-| Ingress rule | Allows `8080/TCP` from `SG_ALB` to `SG_TASK` |
+### `alb` module
+- **`aws_lb`**: Public Application Load Balancer in public subnets with `SG_ALB`.
+- **`aws_lb_target_group`**: Target group pointing to container port `8080` in `ip` target mode with health check on `/`.
+- **`aws_lb_listener`**: Listener on port `80` forwarding to the Target Group.
 
 ### `ecs` module
+- **`aws_ecr_repository`**: `jdn-ecs-app` with image scan on push, `force_delete = true`, and automated lifecycle cleanup policy.
+- **IAM Roles**: `ecs-execution-role` (with `AmazonECSTaskExecutionRolePolicy`) and `ecs-task-role`.
+- **`aws_cloudwatch_log_group`**: `Project04` with 7-day retention period.
+- **`aws_ecs_cluster`**: `jdn-ecs-cluster` with Container Insights enabled.
+- **`aws_ecs_task_definition`**: Fargate task definition (256 CPU / 512 MB) logging to CloudWatch.
+- **`aws_ecs_service`**: Fargate service running in private subnets, registering tasks into the ALB Target Group.
 
-| Resource | Details |
-| --- | --- |
-| `aws_ecr_repository` | `jdn-ecs-app` — immutable tags + scan on push |
-| IAM role `ecs-execution-role` | Policy `AmazonECSTaskExecutionRolePolicy` |
-| IAM role `ecs-task-role` | Role assumed by the tasks |
-| `aws_ecs_task_definition` | Fargate, `awsvpc`, 256 CPU / 512 MB, container `jdn-ecs-app` on port `8080`, logs in `Project04` |
-| `aws_cloudwatch_log_group` | `Project04` |
+---
 
-## 📦 Modules — inputs and outputs
-
-### `modules/network`
-
-**Inputs:** none.
+## 📦 Root Outputs
 
 | Output | Description |
 | --- | --- |
+| `alb_dns_name` | Public DNS URL of the Load Balancer to access the app |
+| `ecr_repository_url` | Full repository URL for pushing Docker images |
+| `ecs_cluster_name` | Name of the ECS cluster |
+| `ecs_service_name` | Name of the ECS service |
 | `vpc_id` | ID of the created VPC |
-| `public_subnet_ids` | Public subnet IDs |
-| `private_subnet_ids` | Private subnet IDs |
+| `public_subnet_ids` | IDs of the public subnets |
+| `private_subnet_ids` | IDs of the private subnets |
 
-### `modules/security`
+---
 
-| Input | Type | Description |
-| --- | --- | --- |
-| `vpc_id` | `string` | ID of the VPC where the Security Groups will be created |
+## 🚀 Deployment Guide
 
-**Outputs:** none.
-
-### `modules/ecs`
-
-**Inputs:** none. **Outputs:** none.
-
-## ✅ Prerequisites
-
-- [Terraform](https://www.terraform.io/downloads) ≥ 1.x
-- [AWS CLI](https://aws.amazon.com/cli/) installed and configured
-- [Docker](https://www.docker.com/) to build the image
-- An AWS account with permission to create the resources above
-
-## 🚀 Usage
-
-### 1. Configure AWS credentials
+### 1. Configure AWS Credentials
 
 ```bash
 aws configure
 # or
 export AWS_ACCESS_KEY_ID="..."
 export AWS_SECRET_ACCESS_KEY="..."
-export AWS_SESSION_TOKEN="..."   # optional
+export AWS_DEFAULT_REGION="us-east-1"
 ```
 
 ### 2. Initialize Terraform
@@ -166,57 +153,47 @@ export AWS_SESSION_TOKEN="..."   # optional
 terraform init
 ```
 
-### 3. Review and apply
+### 3. Build & Push Initial Docker Image
+
+Before the ECS Service starts its tasks, build and push the container image to ECR:
 
 ```bash
-terraform plan
+# 1. Target apply ECR first so the repository is available
+terraform apply -target=module.ecs.aws_ecr_repository.jdn_repo -auto-approve
+
+# 2. Retrieve ECR URL
+REPO_URL=$(terraform output -raw ecr_repository_url)
+
+# 3. Authenticate Docker with ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$REPO_URL"
+
+# 4. Build and push the image
+docker build -t jdn-ecs-app -f dockerfile .
+docker tag jdn-ecs-app:latest "$REPO_URL:latest"
+docker push "$REPO_URL:latest"
+```
+
+### 4. Apply Complete Infrastructure
+
+```bash
 terraform apply
 ```
 
-### 4. Build and push the image to ECR
+Once the apply is complete, Terraform will display the `alb_dns_name`:
 
 ```bash
-# Log in to ECR (replace <account-id> and <region>)
-aws ecr get-login-password --region us-east-1 \
-  | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-
-# Build and push
-docker build -t jdn-ecs-app .
-docker tag jdn-ecs-app:latest <repo-url>:latest
-docker push <repo-url>:latest
+curl http://<alb_dns_name>
+# Output: Hello from ECS Fargate! Host: ...
 ```
 
-> `<repo-url>` is the URL of the `jdn-ecs-app` repository created by the `ecs` module.
+---
 
-## ⚠️ Current status and caveats
+## 🧹 Clean Up
 
-- **Modules not wired up in the root module:** `main.tf` only instantiates `module "network"`.
-  The `module "security"` and `module "ecs"` blocks still need to be added, passing
-  `vpc_id`, subnets, etc.
-- **Hardcoded region:** the provider is hardcoded to `us-east-1`. Ideally this should be
-  parameterized with a variable.
-- **ALB Security Group has no ingress:** there is no rule yet allowing inbound traffic
-  (e.g., `80/443` from the internet).
-- **ALB, ECS cluster, and ECS service are missing:** the task definition exists, but there
-  is no cluster/service to run it.
-- **`latest` tag in the task definition:** the ECR repository uses
-  `image_tag_mutability = "IMMUTABLE"`, which prevents overwriting the `latest` tag. For
-  production, use versioned tags.
-- **NAT Gateway cost:** each NAT has an hourly cost + data transfer. Remember to run
-  `terraform destroy` when you are done testing.
-- **Formatting:** `terraform fmt -check` reports files that are not formatted
-  (`main.tf`, `modules/ecs/main.tf`, `modules/network/main.tf`, `modules/network/outputs.tf`).
-  Run `terraform fmt -recursive` if you want to standardize them.
-
-## 🧹 Clean up
+To destroy all provisioned infrastructure:
 
 ```bash
 terraform destroy
 ```
 
-> If the ECR repository has images, `terraform destroy` may fail to delete it — remove the
-> images manually in the console/CLI first.
-
-## 📝 License
-
-To be defined.
+> **Note:** The ECR repository has `force_delete = true`, allowing `terraform destroy` to succeed without needing to manually delete container images first.

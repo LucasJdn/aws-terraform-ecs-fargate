@@ -27,7 +27,10 @@ module "security" {
 module "ecs" {
   source = "./modules/ecs"
 
-  aws_region = var.aws_region
+  aws_region             = var.aws_region
+  private_subnet_ids     = module.network.private_subnet_ids
+  task_security_group_id = module.security.task_security_group_id
+  target_group_arn       = module.alb.target_group_arn
 }
 
 module "alb" {

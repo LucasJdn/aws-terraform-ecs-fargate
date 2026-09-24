@@ -22,3 +22,13 @@ output "task_definition_arn" {
   description = "ARN of the Task Definition"
   value       = aws_ecs_task_definition.task_test.arn
 }
+
+output "service_id" {
+  description = "ID of the ECS Service"
+  value       = aws_ecs_service.service.id
+}
+
+output "service_name" {
+  description = "Name of the ECS Service"
+  value       = aws_ecs_service.service.name
+}
