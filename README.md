@@ -24,41 +24,9 @@ A **Terraform on AWS** production-ready project that provisions the full infrast
 
 ## 🏗️ Architecture
 
-```mermaid
-graph TD
-    Client["Internet / Users"] -->|"HTTP :80"| ALB["Application Load Balancer<br/>(jdn-alb)"]
+![Arquitetura da Aplicação AWS ECS Fargate](./architecture.png)
 
-    subgraph AWS["AWS — us-east-1"]
-        subgraph VPC["VPC Project-VPC (10.2.0.0/16)"]
-            IGW["Internet Gateway"]
-
-            subgraph PublicSubnets["Public Subnets"]
-                Pub1["PublicSubnet01 (us-east-1a)<br/>10.2.1.0/24"]
-                Pub2["PublicSubnet02 (us-east-1b)<br/>10.2.3.0/24"]
-                NAT1["NAT Gateway 01"]
-                NAT2["NAT Gateway 02"]
-            end
-
-            subgraph PrivateSubnets["Private Subnets"]
-                Priv1["PrivateSubnet01 (us-east-1a)<br/>10.2.2.0/24"]
-                Priv2["PrivateSubnet02 (us-east-1b)<br/>10.2.4.0/24"]
-                ECS_SVC["ECS Fargate Service<br/>(jdn-ecs-service)"]
-            end
-        end
-
-        ECR["Amazon ECR<br/>(jdn-ecs-app)"]
-        CW["CloudWatch Logs<br/>(Project04)"]
-
-        ALB -->|"Target Group :8080"| ECS_SVC
-        ECS_SVC -->|"pull image (via NAT)"| ECR
-        ECS_SVC -->|"stream logs (via NAT)"| CW
-        IGW --> Pub1 & Pub2
-        NAT1 --> Pub1
-        NAT2 --> Pub2
-        Priv1 -.-> NAT1
-        Priv2 -.-> NAT2
-    end
-```
+> **Nota**: O diagrama acima foi construído utilizando as definições de arquitetura AWS (mxgraph.aws4) e está disponível para edição no arquivo `project04.drawio` na raiz do projeto.
 
 ---
 
