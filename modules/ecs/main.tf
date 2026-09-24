@@ -96,3 +96,21 @@ resource "aws_cloudwatch_log_group" "project04" {
     Environment = "production"
   }
 }
+
+#----------------------------------------
+# CLUSTER
+#----------------------------------------
+
+resource "aws_ecs_cluster" "cluster" {
+  name = "jdn-ecs-cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+
+  tags = {
+    Name        = "jdn-ecs-cluster"
+    Environment = "production"
+  }
+}
