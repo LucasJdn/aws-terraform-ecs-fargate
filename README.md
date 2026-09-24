@@ -85,6 +85,9 @@ The task Security Group allows inbound traffic from the ALB Security Group rathe
 - **`SG_ALB`**: Allows inbound HTTP (`80/TCP`) from `0.0.0.0/0`. Allows outbound traffic to `SG_TASK` on port `8080/TCP`.
 - **`SG_TASK`**: Allows inbound traffic from `SG_ALB` on port `8080/TCP`. Allows full outbound traffic (`-1` to `0.0.0.0/0`) for ECR pulls, CloudWatch logs, and NAT access.
 
+ - **Security note**: The task Security Group currently allows unrestricted outbound traffic to support dependencies such as ECR and CloudWatch through the NAT Gateway. A production implementation could further restrict egress based on the required AWS services and network architecture.
+---
+
 ### `alb` module
 - **`aws_lb`**: Public Application Load Balancer in public subnets with `SG_ALB`.
 - **`aws_lb_target_group`**: Target group pointing to container port `8080` in `ip` target mode with health check on `/`.
@@ -98,8 +101,6 @@ The task Security Group allows inbound traffic from the ALB Security Group rathe
 - **`aws_ecs_task_definition`**: Fargate task definition (256 CPU / 512 MB) logging to CloudWatch.
 - **`aws_ecs_service`**: Fargate service running in private subnets, registering tasks into the ALB Target Group.
 
- - **Security note**: The task Security Group currently allows unrestricted outbound traffic to support dependencies such as ECR and CloudWatch through the NAT Gateway. A production implementation could further restrict egress based on the required AWS services and network architecture.
----
 
 ## 📦 Root Outputs
 
