@@ -28,6 +28,17 @@ A **Terraform on AWS** production-ready project that provisions the full infrast
 
 > **Nota**: O diagrama acima foi construído utilizando as definições de arquitetura AWS (mxgraph.aws4) e está disponível para edição no arquivo `project04.drawio` na raiz do projeto.
 
+### ❓ Architecture Decisions (FAQ)
+
+**Why private subnets for ECS tasks?**
+ECS tasks are deployed in private subnets so application workloads are not directly reachable from the internet. Public traffic is terminated at the ALB, which is the only component exposed publicly, reducing the attack surface.
+
+**Why one NAT Gateway per AZ?**
+Each private subnet uses a NAT Gateway in its own Availability Zone. This ensures high availability and avoids a single NAT Gateway becoming a cross-AZ dependency (and also helps reduce cross-AZ data transfer costs).
+
+**Why Security Group references instead of IP-based rules?**
+The task Security Group allows inbound traffic from the ALB Security Group rather than from a CIDR range. This limits application access strictly to traffic originating from the load balancer, providing a strong layer of network isolation.
+
 ---
 
 ## 📁 Project Structure
