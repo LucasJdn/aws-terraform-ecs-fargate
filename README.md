@@ -26,7 +26,7 @@ A **Terraform on AWS** production-ready project that provisions the full infrast
 
 ![Arquitetura da Aplicação AWS ECS Fargate](./architecture.png)
 
-> **Nota**: O diagrama acima foi construído utilizando as definições de arquitetura AWS (mxgraph.aws4) e está disponível para edição no arquivo `project04.drawio` na raiz do projeto.
+
 
 ### ❓ Architecture Decisions (FAQ)
 
@@ -98,6 +98,7 @@ The task Security Group allows inbound traffic from the ALB Security Group rathe
 - **`aws_ecs_task_definition`**: Fargate task definition (256 CPU / 512 MB) logging to CloudWatch.
 - **`aws_ecs_service`**: Fargate service running in private subnets, registering tasks into the ALB Target Group.
 
+ - **Security note**: The task Security Group currently allows unrestricted outbound traffic to support dependencies such as ECR and CloudWatch through the NAT Gateway. A production implementation could further restrict egress based on the required AWS services and network architecture.
 ---
 
 ## 📦 Root Outputs
