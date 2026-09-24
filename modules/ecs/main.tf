@@ -5,10 +5,32 @@
 resource "aws_ecr_repository" "jdn_repo" {
   name                 = "jdn-ecs-app"
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
   }
+}
+
+resource "aws_ecr_lifecycle_policy" "jdn_repo_policy" {
+  repository = aws_ecr_repository.jdn_repo.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
 }
 
 #----------------------------------------
@@ -89,7 +111,8 @@ resource "aws_ecs_task_definition" "task_test" {
 #----------------------------------------
 
 resource "aws_cloudwatch_log_group" "project04" {
-  name = "Project04"
+  name              = "Project04"
+  retention_in_days = var.log_retention_in_days
 
   tags = {
     Name        = "Project04"
